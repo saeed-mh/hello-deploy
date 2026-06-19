@@ -118,7 +118,10 @@ jobs:
 
   deploy-staging:
     name: Deploy staging
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: bash
     needs: publish-image
     environment: staging
     steps:
@@ -127,7 +130,8 @@ jobs:
 
       - name: Configure SSH
         run: |
-          install -m 700 -d ~/.ssh
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
@@ -137,8 +141,10 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/staging/deploy"
+
           scp -i ~/.ssh/deploy_key compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/compose.yml"
+
           scp -i ~/.ssh/deploy_key deploy/nginx.conf deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/deploy/"
 
@@ -166,11 +172,14 @@ jobs:
         run: |
           curl --fail --retry 12 --retry-delay 2 --retry-all-errors "${APPLICATION_URL}/health"
           curl --fail --silent "${APPLICATION_URL}/version" | tee version.json
-          jq --exit-status --arg expected "${EXPECTED_SHA}" '.version == $expected' version.json
+          python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
 
   deploy-production:
     name: Approve and deploy production
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Windows, X64]
+    defaults:
+      run:
+        shell: bash
     needs: [publish-image, deploy-staging]
     environment: production
     concurrency:
@@ -182,7 +191,8 @@ jobs:
 
       - name: Configure SSH
         run: |
-          install -m 700 -d ~/.ssh
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
@@ -192,8 +202,10 @@ jobs:
         run: |
           ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/production/deploy"
+
           scp -i ~/.ssh/deploy_key compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/compose.yml"
+
           scp -i ~/.ssh/deploy_key deploy/nginx.conf deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/deploy/"
 
@@ -220,4 +232,4 @@ jobs:
         run: |
           curl --fail --retry 12 --retry-delay 2 --retry-all-errors "${APPLICATION_URL}/health"
           curl --fail --silent "${APPLICATION_URL}/version" | tee version.json
-          jq --exit-status --arg expected "${EXPECTED_SHA}" '.version == $expected' version.json
+          python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
