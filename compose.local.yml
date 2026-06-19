@@ -1,0 +1,8 @@
+services:
+  app:
+    build:
+      context: .
+      args:
+        GIT_SHA: local-development
+        BUILD_TIME: local-build
+    image: hello-deploy:local
