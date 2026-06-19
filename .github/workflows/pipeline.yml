@@ -7,9 +7,10 @@ on:
       - main
   workflow_dispatch:
 
+# Default permission for all jobs.
+# Only the image-publishing job receives packages: write.
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: hello-deploy-${{ github.ref }}
@@ -50,7 +51,10 @@ jobs:
       - name: Validate Compose
         run: |
           cp .env.example .env
-          docker compose -f compose.yml -f compose.local.yml config --quiet
+          docker compose \
+            -f compose.yml \
+            -f compose.local.yml \
+            config --quiet
 
   container-test:
     name: Build and smoke-test container
@@ -101,11 +105,25 @@ jobs:
         if: failure()
         run: docker logs hello-test
 
+      - name: Remove test container
+        if: always()
+        run: docker rm --force hello-test || true
+
   publish-image:
     name: Publish immutable image
     runs-on: ubuntu-latest
     needs: container-test
-    if: github.event_name != 'pull_request'
+
+    # This job needs permission to publish to GitHub Container Registry.
+    permissions:
+      contents: read
+      packages: write
+
+    # Pull requests never publish.
+    # Manual runs publish only when the selected branch is main.
+    if: >
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main'
 
     outputs:
       image_repo: ${{ steps.image.outputs.repo }}
@@ -144,6 +162,7 @@ jobs:
 
   deploy-staging:
     name: Deploy staging
+    timeout-minutes: 20
 
     runs-on:
       - self-hosted
@@ -167,22 +186,22 @@ jobs:
           chmod 700 ~/.ssh
 
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
-            > ~/.ssh/deploy_key
+            > ~/.ssh/hello_deploy_ci_key
 
-          chmod 600 ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/hello_deploy_ci_key
 
           printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
-            > ~/.ssh/known_hosts
+            > ~/.ssh/hello_deploy_ci_known_hosts
 
-          chmod 600 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/hello_deploy_ci_known_hosts
 
       - name: Test SSH connection
         run: |
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "whoami && docker ps"
 
@@ -191,24 +210,24 @@ jobs:
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/staging/deploy"
 
           scp \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/compose.yml"
 
           scp \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             deploy/nginx.conf \
             deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/deploy/"
@@ -222,8 +241,8 @@ jobs:
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "cd /opt/hello-deploy/staging && \
              chmod +x deploy/deploy.sh && \
@@ -253,10 +272,19 @@ jobs:
             "${APPLICATION_URL}/version" |
             tee version.json
 
-          python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
+          python -c \
+            "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" \
+            "${EXPECTED_SHA}"
+
+      - name: Remove temporary SSH files
+        if: always()
+        run: |
+          rm -f ~/.ssh/hello_deploy_ci_key
+          rm -f ~/.ssh/hello_deploy_ci_known_hosts
 
   deploy-production:
     name: Approve and deploy production
+    timeout-minutes: 20
 
     runs-on:
       - self-hosted
@@ -287,22 +315,22 @@ jobs:
           chmod 700 ~/.ssh
 
           printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
-            > ~/.ssh/deploy_key
+            > ~/.ssh/hello_deploy_ci_key
 
-          chmod 600 ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/hello_deploy_ci_key
 
           printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
-            > ~/.ssh/known_hosts
+            > ~/.ssh/hello_deploy_ci_known_hosts
 
-          chmod 600 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/hello_deploy_ci_known_hosts
 
       - name: Test SSH connection
         run: |
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "whoami && docker ps"
 
@@ -311,24 +339,24 @@ jobs:
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/production/deploy"
 
           scp \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/compose.yml"
 
           scp \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             deploy/nginx.conf \
             deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/deploy/"
@@ -341,8 +369,8 @@ jobs:
           ssh \
             -o BatchMode=yes \
             -o StrictHostKeyChecking=yes \
-            -o UserKnownHostsFile=~/.ssh/known_hosts \
-            -i ~/.ssh/deploy_key \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "cd /opt/hello-deploy/production && \
              chmod +x deploy/deploy.sh && \
@@ -372,4 +400,12 @@ jobs:
             "${APPLICATION_URL}/version" |
             tee version.json
 
-          python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
+          python -c \
+            "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" \
+            "${EXPECTED_SHA}"
+
+      - name: Remove temporary SSH files
+        if: always()
+        run: |
+          rm -f ~/.ssh/hello_deploy_ci_key
+          rm -f ~/.ssh/hello_deploy_ci_known_hosts
