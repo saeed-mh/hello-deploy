@@ -3,7 +3,8 @@ name: CI/CD Pipeline
 on:
   pull_request:
   push:
-    branches: [main]
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
@@ -21,6 +22,7 @@ jobs:
   quality:
     name: Lint, test, and validate
     runs-on: ubuntu-latest
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -54,6 +56,7 @@ jobs:
     name: Build and smoke-test container
     runs-on: ubuntu-latest
     needs: quality
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -67,13 +70,32 @@ jobs:
             .
 
       - name: Start test container
-        run: docker run --detach --name hello-test --publish 8000:8000 hello-deploy:test
+        run: |
+          docker run \
+            --detach \
+            --name hello-test \
+            --publish 8000:8000 \
+            hello-deploy:test
 
       - name: Smoke test real container
         run: |
-          curl --fail --retry 12 --retry-delay 2 --retry-all-errors http://127.0.0.1:8000/health
-          curl --fail http://127.0.0.1:8000/version | tee version.json
-          jq --exit-status --arg expected "${GITHUB_SHA}" '.version == $expected' version.json
+          curl \
+            --fail \
+            --retry 12 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            http://127.0.0.1:8000/health
+
+          curl \
+            --fail \
+            http://127.0.0.1:8000/version |
+            tee version.json
+
+          jq \
+            --exit-status \
+            --arg expected "${GITHUB_SHA}" \
+            '.version == $expected' \
+            version.json
 
       - name: Show logs after failure
         if: failure()
@@ -84,9 +106,11 @@ jobs:
     runs-on: ubuntu-latest
     needs: container-test
     if: github.event_name != 'pull_request'
+
     outputs:
       image_repo: ${{ steps.image.outputs.repo }}
       image_tag: ${{ steps.image.outputs.tag }}
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -100,9 +124,10 @@ jobs:
 
       - name: Log in to GHCR
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login "${REGISTRY}" \
-            --username "${{ github.actor }}" \
-            --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" |
+            docker login "${REGISTRY}" \
+              --username "${{ github.actor }}" \
+              --password-stdin
 
       - name: Build and push release image
         env:
@@ -114,16 +139,23 @@ jobs:
             --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --tag "${IMAGE_REPO}:${IMAGE_TAG}" \
             .
+
           docker push "${IMAGE_REPO}:${IMAGE_TAG}"
 
   deploy-staging:
     name: Deploy staging
-    runs-on: [self-hosted, Windows, X64]
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+
     defaults:
       run:
-        shell: bash
+        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail {0}'
+
     needs: publish-image
     environment: staging
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -132,20 +164,52 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
+            > ~/.ssh/deploy_key
+
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
+            > ~/.ssh/known_hosts
+
           chmod 600 ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "whoami && docker ps"
 
       - name: Copy deployment files
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/staging/deploy"
 
-          scp -i ~/.ssh/deploy_key compose.yml \
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/compose.yml"
 
-          scp -i ~/.ssh/deploy_key deploy/nginx.conf deploy/deploy.sh \
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            deploy/nginx.conf \
+            deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/staging/deploy/"
 
       - name: Deploy and verify health on host
@@ -154,7 +218,12 @@ jobs:
           IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
           FORCE_UNHEALTHY: ${{ vars.FORCE_UNHEALTHY }}
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "cd /opt/hello-deploy/staging && \
              chmod +x deploy/deploy.sh && \
              IMAGE_REPO='${IMAGE_REPO}' \
@@ -170,21 +239,42 @@ jobs:
           APPLICATION_URL: ${{ vars.APPLICATION_URL }}
           EXPECTED_SHA: ${{ needs.publish-image.outputs.image_tag }}
         run: |
-          curl --fail --retry 12 --retry-delay 2 --retry-all-errors "${APPLICATION_URL}/health"
-          curl --fail --silent "${APPLICATION_URL}/version" | tee version.json
+          curl \
+            --fail \
+            --retry 12 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${APPLICATION_URL}/health"
+
+          curl \
+            --fail \
+            --silent \
+            "${APPLICATION_URL}/version" |
+            tee version.json
+
           python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
 
   deploy-production:
     name: Approve and deploy production
-    runs-on: [self-hosted, Windows, X64]
+    runs-on:
+      - self-hosted
+      - Windows
+      - X64
+
     defaults:
       run:
-        shell: bash
-    needs: [publish-image, deploy-staging]
+        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -e -o pipefail {0}'
+
+    needs:
+      - publish-image
+      - deploy-staging
+
     environment: production
+
     concurrency:
       group: hello-deploy-production
       cancel-in-progress: false
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
@@ -193,20 +283,52 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
+            > ~/.ssh/deploy_key
+
           chmod 600 ~/.ssh/deploy_key
-          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
+            > ~/.ssh/known_hosts
+
           chmod 600 ~/.ssh/known_hosts
+
+      - name: Test SSH connection
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "whoami && docker ps"
 
       - name: Copy deployment files
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "mkdir -p /opt/hello-deploy/production/deploy"
 
-          scp -i ~/.ssh/deploy_key compose.yml \
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            compose.yml \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/compose.yml"
 
-          scp -i ~/.ssh/deploy_key deploy/nginx.conf deploy/deploy.sh \
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            deploy/nginx.conf \
+            deploy/deploy.sh \
             "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/deploy/"
 
       - name: Deploy and verify health on host
@@ -214,7 +336,12 @@ jobs:
           IMAGE_REPO: ${{ needs.publish-image.outputs.image_repo }}
           IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -i ~/.ssh/deploy_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
             "cd /opt/hello-deploy/production && \
              chmod +x deploy/deploy.sh && \
              IMAGE_REPO='${IMAGE_REPO}' \
@@ -230,6 +357,17 @@ jobs:
           APPLICATION_URL: ${{ vars.APPLICATION_URL }}
           EXPECTED_SHA: ${{ needs.publish-image.outputs.image_tag }}
         run: |
-          curl --fail --retry 12 --retry-delay 2 --retry-all-errors "${APPLICATION_URL}/health"
-          curl --fail --silent "${APPLICATION_URL}/version" | tee version.json
+          curl \
+            --fail \
+            --retry 12 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${APPLICATION_URL}/health"
+
+          curl \
+            --fail \
+            --silent \
+            "${APPLICATION_URL}/version" |
+            tee version.json
+
           python -c "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" "${EXPECTED_SHA}"
