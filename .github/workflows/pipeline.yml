@@ -166,7 +166,7 @@ jobs:
 
     runs-on:
       - self-hosted
-      - Windows
+      - Linux
       - X64
 
     defaults:
@@ -288,7 +288,7 @@ jobs:
 
     runs-on:
       - self-hosted
-      - Windows
+      - Linux
       - X64
 
     defaults:
