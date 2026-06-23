@@ -92,7 +92,7 @@ jobs:
 
           curl \
             --fail \
-            http://127.0.0.1:8000/version |
+            http://127.0.0.1:8000/version | \
             tee version.json
 
           jq \
@@ -142,7 +142,7 @@ jobs:
 
       - name: Log in to GHCR
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
             docker login "${REGISTRY}" \
               --username "${{ github.actor }}" \
               --password-stdin
@@ -166,12 +166,12 @@ jobs:
 
     runs-on:
       - self-hosted
-      - Linux
-      - X64
+      - linux
+      - x64
 
     defaults:
       run:
-        shell: 'C:\actions-runner\git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        shell: bash
 
     needs: publish-image
     environment: staging
@@ -269,7 +269,7 @@ jobs:
           curl \
             --fail \
             --silent \
-            "${APPLICATION_URL}/version" |
+            "${APPLICATION_URL}/version" | \
             tee version.json
 
           python -c \
@@ -288,12 +288,12 @@ jobs:
 
     runs-on:
       - self-hosted
-      - Linux
-      - X64
+      - linux
+      - x64
 
     defaults:
       run:
-        shell: 'C:\actions-runner\git\bin\bash.exe --noprofile --norc -e -o pipefail {0}'
+        shell: bash
 
     needs:
       - publish-image
@@ -397,7 +397,7 @@ jobs:
           curl \
             --fail \
             --silent \
-            "${APPLICATION_URL}/version" |
+            "${APPLICATION_URL}/version" | \
             tee version.json
 
           python -c \
