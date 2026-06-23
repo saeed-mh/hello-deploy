@@ -9,7 +9,14 @@ BACKUP_FILE=".env.previous"
 PROJECT_NAME="${PROJECT_NAME:-hello-deploy}"
 
 compose() {
-  docker compose --project-name "${PROJECT_NAME}" "$@"
+  if docker compose version >/dev/null 2>&1; then
+    docker compose --project-name "${PROJECT_NAME}" "$@"
+  elif command -v docker-compose >/dev/null 2>&1; then
+    docker-compose --project-name "${PROJECT_NAME}" "$@"
+  else
+    echo "Error: Neither 'docker compose' nor 'docker-compose' could be found on this host." >&2
+    exit 1
+  fi
 }
 
 if [[ -f "${ENV_FILE}" ]]; then
