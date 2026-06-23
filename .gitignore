@@ -10,3 +10,11 @@ venv/
 *.log
 .DS_Store
 .vscode/
+
+# Terraform local files
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
