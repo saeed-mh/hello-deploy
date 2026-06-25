@@ -287,130 +287,130 @@ jobs:
           rm -f ~/.ssh/hello_deploy_ci_key
           rm -f ~/.ssh/hello_deploy_ci_known_hosts
 
-  # deploy-production:
-  #   name: Approve and deploy production
-  #   timeout-minutes: 20
+  deploy-production:
+    name: Approve and deploy production
+    timeout-minutes: 20
 
-  #   runs-on:
-  #     - self-hosted
-  #     - linux
-  #     - x64
+    runs-on:
+      - self-hosted
+      - linux
+      - x64
 
-  #   defaults:
-  #     run:
-  #       shell: bash
+    defaults:
+      run:
+        shell: bash
 
-  #   needs:
-  #     - publish-image
-  #     - deploy-staging
+    needs:
+      - publish-image
+      - deploy-staging
 
-  #   environment: production
+    environment: production
 
-  #   concurrency:
-  #     group: hello-deploy-production
-  #     cancel-in-progress: false
+    concurrency:
+      group: hello-deploy-production
+      cancel-in-progress: false
 
-  #   steps:
-  #     - name: Check out repository
-  #       uses: actions/checkout@v5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
 
-  #     - name: Configure SSH
-  #       run: |
-  #         mkdir -p ~/.ssh
-  #         chmod 700 ~/.ssh
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
 
-  #         printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
-  #           > ~/.ssh/hello_deploy_ci_key
+          printf '%s\n' "${{ secrets.SSH_PRIVATE_KEY }}" \
+            > ~/.ssh/hello_deploy_ci_key
 
-  #         chmod 600 ~/.ssh/hello_deploy_ci_key
+          chmod 600 ~/.ssh/hello_deploy_ci_key
 
-  #         printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
-  #           > ~/.ssh/hello_deploy_ci_known_hosts
+          printf '%s\n' "${{ secrets.SSH_KNOWN_HOSTS }}" \
+            > ~/.ssh/hello_deploy_ci_known_hosts
 
-  #         chmod 600 ~/.ssh/hello_deploy_ci_known_hosts
+          chmod 600 ~/.ssh/hello_deploy_ci_known_hosts
 
-  #     - name: Test SSH connection
-  #       run: |
-  #         ssh \
-  #           -o BatchMode=yes \
-  #           -o StrictHostKeyChecking=yes \
-  #           -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
-  #           -i ~/.ssh/hello_deploy_ci_key \
-  #           "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-  #           "whoami && docker ps"
+      - name: Test SSH connection
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "whoami && docker ps"
 
-  #     - name: Copy deployment files
-  #       run: |
-  #         ssh \
-  #           -o BatchMode=yes \
-  #           -o StrictHostKeyChecking=yes \
-  #           -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
-  #           -i ~/.ssh/hello_deploy_ci_key \
-  #           "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-  #           "mkdir -p /opt/hello-deploy/production/deploy"
+      - name: Copy deployment files
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "mkdir -p /opt/hello-deploy/production/deploy"
 
-  #         scp \
-  #           -o BatchMode=yes \
-  #           -o StrictHostKeyChecking=yes \
-  #           -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
-  #           -i ~/.ssh/hello_deploy_ci_key \
-  #           compose.yml \
-  #           "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/compose.yml"
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
+            compose.yml \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/compose.yml"
 
-  #         scp \
-  #           -o BatchMode=yes \
-  #           -o StrictHostKeyChecking=yes \
-  #           -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
-  #           -i ~/.ssh/hello_deploy_ci_key \
-  #           deploy/nginx.conf \
-  #           deploy/deploy.sh \
-  #           "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/deploy/"
+          scp \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
+            deploy/nginx.conf \
+            deploy/deploy.sh \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/opt/hello-deploy/production/deploy/"
 
-  #     - name: Deploy and verify health on host
-  #       env:
-  #         IMAGE_REPO: ${{ needs.publish-image.outputs.image_repo }}
-  #         IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
-  #       run: |
-  #         ssh \
-  #           -o BatchMode=yes \
-  #           -o StrictHostKeyChecking=yes \
-  #           -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
-  #           -i ~/.ssh/hello_deploy_ci_key \
-  #           "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
-  #           "cd /opt/hello-deploy/production && \
-  #            chmod +x deploy/deploy.sh && \
-  #            IMAGE_REPO='${IMAGE_REPO}' \
-  #            IMAGE_TAG='${IMAGE_TAG}' \
-  #            APP_ENV='production' \
-  #            PUBLIC_PORT='80' \
-  #            PROJECT_NAME='hello-production' \
-  #            FORCE_UNHEALTHY='false' \
-  #            ./deploy/deploy.sh"
+      - name: Deploy and verify health on host
+        env:
+          IMAGE_REPO: ${{ needs.publish-image.outputs.image_repo }}
+          IMAGE_TAG: ${{ needs.publish-image.outputs.image_tag }}
+        run: |
+          ssh \
+            -o BatchMode=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/hello_deploy_ci_known_hosts \
+            -i ~/.ssh/hello_deploy_ci_key \
+            "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" \
+            "cd /opt/hello-deploy/production && \
+             chmod +x deploy/deploy.sh && \
+             IMAGE_REPO='${IMAGE_REPO}' \
+             IMAGE_TAG='${IMAGE_TAG}' \
+             APP_ENV='production' \
+             PUBLIC_PORT='80' \
+             PROJECT_NAME='hello-production' \
+             FORCE_UNHEALTHY='false' \
+             ./deploy/deploy.sh"
 
-  #     - name: Prove production is the expected commit
-  #       env:
-  #         APPLICATION_URL: ${{ vars.APPLICATION_URL }}
-  #         EXPECTED_SHA: ${{ needs.publish-image.outputs.image_tag }}
-  #       run: |
-  #         curl \
-  #           --fail \
-  #           --retry 12 \
-  #           --retry-delay 2 \
-  #           --retry-all-errors \
-  #           "${APPLICATION_URL}/health"
+      - name: Prove production is the expected commit
+        env:
+          APPLICATION_URL: ${{ vars.APPLICATION_URL }}
+          EXPECTED_SHA: ${{ needs.publish-image.outputs.image_tag }}
+        run: |
+          curl \
+            --fail \
+            --retry 12 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            "${APPLICATION_URL}/health"
 
-  #         curl \
-  #           --fail \
-  #           --silent \
-  #           "${APPLICATION_URL}/version" | \
-  #           tee version.json
+          curl \
+            --fail \
+            --silent \
+            "${APPLICATION_URL}/version" | \
+            tee version.json
 
-  #         python -c \
-  #           "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" \
-  #           "${EXPECTED_SHA}"
+          python -c \
+            "import json,sys; data=json.load(open('version.json', encoding='utf-8')); assert data['version'] == sys.argv[1], data" \
+            "${EXPECTED_SHA}"
 
-  #     - name: Remove temporary SSH files
-  #       if: always()
-  #       run: |
-  #         rm -f ~/.ssh/hello_deploy_ci_key
-  #         rm -f ~/.ssh/hello_deploy_ci_known_hosts
+      - name: Remove temporary SSH files
+        if: always()
+        run: |
+          rm -f ~/.ssh/hello_deploy_ci_key
+          rm -f ~/.ssh/hello_deploy_ci_known_hosts
