@@ -114,56 +114,56 @@ jobs:
         if: always()
         run: docker rm --force hello-test || true
 
-  # publish-image:
-  #   name: Publish immutable image
-  #   runs-on: ubuntu-latest
-  #   needs: container-test
+  publish-image:
+    name: Publish immutable image
+    runs-on: ubuntu-latest
+    needs: container-test
 
-  #   # This job needs permission to publish to GitHub Container Registry.
-  #   permissions:
-  #     contents: read
-  #     packages: write
+    # This job needs permission to publish to GitHub Container Registry.
+    permissions:
+      contents: read
+      packages: write
 
   #   # Pull requests never publish.
   #   # Manual runs publish only when the selected branch is main.
-  #   if: >
-  #     github.event_name != 'pull_request' &&
-  #     github.ref == 'refs/heads/main'
+    if: >
+      github.event_name != 'pull_request' &&
+      github.ref == 'refs/heads/main'
 
-  #   outputs:
-  #     image_repo: ${{ steps.image.outputs.repo }}
-  #     image_tag: ${{ steps.image.outputs.tag }}
+    outputs:
+      image_repo: ${{ steps.image.outputs.repo }}
+      image_tag: ${{ steps.image.outputs.tag }}
 
-  #   steps:
-  #     - name: Check out repository
-  #       uses: actions/checkout@v5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
 
-  #     - name: Calculate lowercase image name
-  #       id: image
-  #       shell: bash
-  #       run: |
-  #         echo "repo=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "${GITHUB_OUTPUT}"
-  #         echo "tag=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
+      - name: Calculate lowercase image name
+        id: image
+        shell: bash
+        run: |
+          echo "repo=${REGISTRY}/${GITHUB_REPOSITORY,,}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${GITHUB_SHA}" >> "${GITHUB_OUTPUT}"
 
-  #     - name: Log in to GHCR
-  #       run: |
-  #         echo "${{ secrets.GITHUB_TOKEN }}" | \
-  #           docker login "${REGISTRY}" \
-  #             --username "${{ github.actor }}" \
-  #             --password-stdin
+      - name: Log in to GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login "${REGISTRY}" \
+              --username "${{ github.actor }}" \
+              --password-stdin
 
-  #     - name: Build and push release image
-  #       env:
-  #         IMAGE_REPO: ${{ steps.image.outputs.repo }}
-  #         IMAGE_TAG: ${{ steps.image.outputs.tag }}
-  #       run: |
-  #         docker build \
-  #           --build-arg GIT_SHA="${IMAGE_TAG}" \
-  #           --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  #           --tag "${IMAGE_REPO}:${IMAGE_TAG}" \
-  #           .
+      - name: Build and push release image
+        env:
+          IMAGE_REPO: ${{ steps.image.outputs.repo }}
+          IMAGE_TAG: ${{ steps.image.outputs.tag }}
+        run: |
+          docker build \
+            --build-arg GIT_SHA="${IMAGE_TAG}" \
+            --build-arg BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --tag "${IMAGE_REPO}:${IMAGE_TAG}" \
+            .
 
-  #         docker push "${IMAGE_REPO}:${IMAGE_TAG}"
+          docker push "${IMAGE_REPO}:${IMAGE_TAG}"
 
   # deploy-staging:
   #   name: Deploy staging
